@@ -53,7 +53,8 @@
 
   # Post-install stuff
   - name: Copy config to fedmsg.d (probably workarounding .spec here)
-    command: cp /etc/module-build-service/fedmsg.d/module_build_service.py /etc/fedmsg.d/
+    command: creates=/etc/fedmsg.d/module_build_service.py
+      cp /etc/module-build-service/fedmsg.d/module_build_service.py /etc/fedmsg.d/
 
   - name: Upgrade database
     command: python /usr/lib/python2.7/site-packages/module_build_service/manage.py upgradedb
