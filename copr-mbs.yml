@@ -1,0 +1,89 @@
+---
+- hosts: all
+  become: yes
+  become_user: root
+
+  # Fix problem with missing python on fedora/25-cloud-base
+  # https://fedoramagazine.org/getting-ansible-working-fedora-23/
+  gather_facts: false
+
+  tasks:
+  - name: Install python and deps for ansible modules
+    raw: dnf install -y python2 python2-dnf libselinux-python
+
+  - name: Install stuff
+    dnf: name={{ item }} state=latest
+    with_items:
+      # Those things are explicitly listed in Vagrantfile
+      # https://pagure.io/fm-orchestrator/blob/master/f/Vagrantfile
+      # Should they be covered by spec file?
+      - fedmsg-relay
+      - fedpkg
+      - gcc
+      - gcc
+      - gcc-c++
+      - git
+      - koji
+      - krb5-workstation
+      - libffi-devel
+      - openssl-devel
+      - python
+      - python-devel
+      - python-devel
+      - python-flask
+      - python-mock
+      - python-virtualenv
+      - redhat-rpm-config
+      - redhat-rpm-config
+      - rpm-build
+      - swig
+      - systemd-devel
+
+      # Required for copr
+      - copr-cli
+
+
+  # Install module-build-service
+  - name: Enable copr-dev repo
+    command: dnf -y copr enable frostyx/module-build-service
+
+  - name: Install module-build-service package
+    dnf: name=module-build-service state=latest
+
+
+  # Post-install stuff
+  - name: Copy config to fedmsg.d (probably workarounding .spec here)
+    command: cp /etc/module-build-service/fedmsg.d/module_build_service.py /etc/fedmsg.d/
+
+  - name: Upgrade database
+    command: python /usr/lib/python2.7/site-packages/module_build_service/manage.py upgradedb
+
+  - name: Generate cert
+    command: python /usr/lib/python2.7/site-packages/module_build_service/manage.py generatelocalhostcert
+
+  - name: Export krbcc
+    command: echo 'export KRB5CCNAME=FILE:/var/tmp/krbcc' >> ~/.bashrc
+
+  - name: Set properties in config
+    replace:
+      dest: /etc/module-build-service/config.py
+      regexp: '^    {{ item.key }} = .*$'
+      replace: '    {{ item.key }} = {{ item.value }}'
+      backup: yes
+    with_items:
+      - { key: 'SYSTEM', value: '"copr"'}
+      - { key: 'REQUIRE_PACKAGER', value: 'False'}
+      - { key: 'OIDC_CLIENT_SECRETS', value: '"/etc/module-build-service/client_secrets.json"'}
+
+
+  # Enable fedmsg-relay
+  - name: Enable fedmsg-relay
+    service: name=fedmsg-relay enabled=yes state=started
+
+
+  # Run module-build-service processes
+  - name: Run mbs-scheduler
+    service: name=mbs-scheduler enabled=yes state=started
+
+  - name: Run mbs-frontend
+    service: name=mbs-frontend enabled=yes state=started
